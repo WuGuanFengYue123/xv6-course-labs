@@ -1,0 +1,163 @@
+diff --git a/Makefile b/Makefile
+index ded5bc2..dad0a7a 100644
+--- a/Makefile
++++ b/Makefile
+@@ -30,7 +30,8 @@ OBJS = \
+   $K/sysfile.o \
+   $K/kernelvec.o \
+   $K/plic.o \
+-  $K/virtio_disk.o
++  $K/virtio_disk.o \
++  $K/pmmtest.o 
+ 
+ OBJS_KCSAN = \
+   $K/start.o \
+diff --git a/kernel/defs.h b/kernel/defs.h
+index a3c962b..3520db2 100644
+--- a/kernel/defs.h
++++ b/kernel/defs.h
+@@ -63,6 +63,10 @@ void            ramdiskrw(struct buf*);
+ void*           kalloc(void);
+ void            kfree(void *);
+ void            kinit(void);
++uint64 freepages(void);
++
++// pmmtest.c
++void test_freepages(void);
+ 
+ // log.c
+ void            initlog(int, struct superblock*);
+diff --git a/kernel/kalloc.c b/kernel/kalloc.c
+index 0699e7e..a247d8d 100644
+--- a/kernel/kalloc.c
++++ b/kernel/kalloc.c
+@@ -80,3 +80,20 @@ kalloc(void)
+     memset((char*)r, 5, PGSIZE); // fill with junk
+   return (void*)r;
+ }
++
++// Exercise 1: Count free physical pages.
++//
++// Requirements:
++// 1. Traverse kmem.freelist.
++// 2. Use kmem.lock correctly.
++// 3. Do not modify the free list.
++// 4. Return the number of free pages.
++uint64
++freepages(void)
++{
++
++    // TODO: Implement this function.
++
++    return 0;
++
++}
+diff --git a/kernel/main.c b/kernel/main.c
+index f0d3171..072aef8 100644
+--- a/kernel/main.c
++++ b/kernel/main.c
+@@ -16,7 +16,9 @@ main()
+     printf("\n");
+     printf("xv6 kernel is booting\n");
+     printf("\n");
+-    kinit();         // physical page allocator
++    kinit();         // physical page allocator 
++    // Exercise 1: automatic test
++    test_freepages();
+     kvminit();       // create kernel page table
+     kvminithart();   // turn on paging
+     procinit();      // process table
+diff --git a/kernel/pmmtest.c b/kernel/pmmtest.c
+new file mode 100644
+index 0000000..8bbfcf4
+--- /dev/null
++++ b/kernel/pmmtest.c
+@@ -0,0 +1,88 @@
++
++#include "types.h"
++#include "param.h"
++#include "memlayout.h"
++#include "riscv.h"
++#include "defs.h"
++
++#define TEST_PAGES 10
++
++void
++test_freepages(void)
++{
++    void *pages[TEST_PAGES];
++    uint64 before, after;
++    int score = 0;
++    int i;
++
++    printf("\n========== Exercise 2 ==========\n");
++
++    before = freepages();
++
++    // T1: Check initial free page count
++    if(before > 10){
++        printf("[PASS] T1: Initial count (+4)\n");
++        score += 4;
++    } else {
++        printf("[FAIL] T1: Initial count\n");
++    }
++
++    // T2: Allocate one page
++    void *p = kalloc();
++    if(p == 0)
++        panic("test: kalloc failed");
++
++    after = freepages();
++
++    if(after == before - 1){
++        printf("[PASS] T2: Single allocation (+4)\n");
++        score += 4;
++    } else {
++        printf("[FAIL] T2: Single allocation\n");
++    }
++
++    // T3: Free one page
++    kfree(p);
++    after = freepages();
++
++    if(after == before){
++        printf("[PASS] T3: Single release (+4)\n");
++        score += 4;
++    } else {
++        printf("[FAIL] T3: Single release\n");
++    }
++
++    // T4: Allocate 10 pages
++    for(i = 0; i < TEST_PAGES; i++){
++        pages[i] = kalloc();
++        if(pages[i] == 0)
++            panic("test: batch allocation failed");
++    }
++
++    after = freepages();
++
++    if(after == before - TEST_PAGES){
++        printf("[PASS] T4: Batch allocation (+4)\n");
++        score += 4;
++    } else {
++        printf("[FAIL] T4: Batch allocation\n");
++    }
++
++    // T5: Free 10 pages
++    for(i = 0; i < TEST_PAGES; i++){
++        kfree(pages[i]);
++    }
++
++    after = freepages();
++
++    if(after == before){
++        printf("[PASS] T5: Batch release (+4)\n");
++        score += 4;
++    } else {
++        printf("[FAIL] T5: Batch release\n");
++    }
++
++    printf("-------------------------------\n");
++    printf("Exercise 2 Score: %d / 20\n", score);
++    printf("================================\n");
++}
